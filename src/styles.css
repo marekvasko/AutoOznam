@@ -388,24 +388,31 @@ input {
   align-items: flex-start;
   gap: 18px;
 }
-.edit-actions details {
-  font-size: 12px;
-  max-width: 100%;
+.edit-link-block {
+  flex: 1 1 22rem;
+  min-width: 0;
 }
-.edit-actions summary {
-  cursor: pointer;
-  color: #557744;
-  padding: 3px 0;
-}
-.edit-actions input {
-  margin: 12px 0 8px;
-  font-size: 11px;
-}
-.edit-actions details p {
+.edit-link-block > p {
+  margin: 0 0 7px;
   color: #7d8874;
   font-size: 11px;
-  line-height: 1.6;
-  margin: 9px 0 0;
+}
+.edit-link-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.edit-link {
+  color: #557744;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.copy-link-button {
+  flex-shrink: 0;
+  padding: 3px;
 }
 .sr-only {
   position: absolute;

@@ -218,7 +218,7 @@ function AnnouncementForm() {
       await navigator.clipboard.writeText(editLink);
       setCopied(true);
     } catch {
-      setError('Odkaz skopíruj z poľa nižšie.');
+      setError('Odkaz označ a skopíruj ručne.');
     }
   }
   return (
@@ -547,27 +547,30 @@ function AnnouncementForm() {
             </div>
             {saved && (
               <div className="edit-actions">
-                <details>
-                  <summary>Odkaz na neskoršiu úpravu</summary>
-                  <label className="sr-only" htmlFor="edit-link">
-                    Odkaz na úpravu
-                  </label>
-                  <input
-                    id="edit-link"
-                    readOnly
-                    value={editLink}
-                    onFocus={(e) => e.target.select()}
-                  />
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={copyLink}
-                  >
-                    <Copy size={14} />
-                    {copied ? 'Skopírované' : 'Kopíruj odkaz'}
-                  </button>
-                  <p>Oznam môže upraviť každý.</p>
-                </details>
+                <div className="edit-link-block">
+                  <p id="edit-link-label">Odkaz na ďalšie úpravy</p>
+                  <div className="edit-link-row">
+                    <a
+                      className="edit-link"
+                      href={editLink}
+                      aria-describedby="edit-link-label"
+                    >
+                      {editLink}
+                    </a>
+                    <button
+                      type="button"
+                      className="text-button copy-link-button"
+                      onClick={copyLink}
+                      aria-label={copied ? 'Skopírované' : 'Skopíruj odkaz'}
+                      title={copied ? 'Skopírované' : 'Skopíruj odkaz'}
+                    >
+                      {copied ? <Check size={15} /> : <Copy size={15} />}
+                    </button>
+                    <span className="sr-only" aria-live="polite">
+                      {copied ? 'Odkaz je skopírovaný.' : ''}
+                    </span>
+                  </div>
+                </div>
                 <button
                   type="button"
                   className="text-button"

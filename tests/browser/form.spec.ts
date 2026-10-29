@@ -217,13 +217,16 @@ test('odkaz na oznam funguje aj v inom prehliadači bez pôvodnej relácie', asy
   await fill(page);
   await page.getByRole('button', { name: 'Odošli oznam' }).click();
   await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  const editLink = page.locator('.edit-link');
+  await expect(editLink).toBeVisible();
+  const editUrl = await editLink.getAttribute('href');
   const context = await browser.newContext();
   try {
     const other = await context.newPage();
     await other.route('**/api/announcements/*', (route) =>
       route.fulfill({ json: [...state.records.values()][0] }),
     );
-    await other.goto(page.url());
+    await other.goto(editUrl!);
     await expect(other.getByLabel('Tvoje meno')).toHaveValue('Mária Nováková');
     await expect(
       other.getByRole('button', { name: 'Ulož zmeny' }),
