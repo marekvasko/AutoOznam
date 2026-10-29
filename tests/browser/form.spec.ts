@@ -26,6 +26,7 @@ async function mockApi(
   page: Page,
   options: {
     missing?: boolean;
+    missingDate?: boolean;
     failed?: boolean;
     long?: boolean;
     loseFirstResponse?: boolean;
@@ -92,7 +93,7 @@ async function mockApi(
       revision: body.baseRevision + 1,
       status: options.failed
         ? 'review_failed'
-        : options.missing || options.long
+        : options.missing || options.missingDate || options.long
           ? 'needs_changes'
           : 'pending',
       reviewError: options.failed
@@ -102,6 +103,18 @@ async function mockApi(
         ? null
         : {
             ...analysis,
+            when: options.missingDate
+              ? { present: false, detail: 'Doplň dátum udalosti.' }
+              : analysis.when,
+            extracted: options.missingDate
+              ? {
+                  ...analysis.extracted,
+                  date: null,
+                  startsAt: null,
+                  dateInferred: false,
+                  source: 'o 9:00',
+                }
+              : analysis.extracted,
             where: options.missing
               ? { present: false, detail: 'Doplň konkrétne miesto.' }
               : analysis.where,
@@ -271,6 +284,27 @@ test('skrátený návrh uloží ako ďalšiu verziu a nový oznam dostane nové 
   await page.getByRole('button', { name: 'Odošli oznam' }).click();
   await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
   expect(state.requests[2].id).not.toBe(state.requests[0].id);
+});
+test('bez rozpoznaného dátumu ponúkne doplnenie textu a skryje úpravu termínu', async ({
+  page,
+}) => {
+  const state = await mockApi(page, { missingDate: true });
+  await page.goto('/');
+  await fill(page);
+  await page
+    .getByLabel('Oznam', { exact: true })
+    .fill('Pozývame vás na farskú brigádu o 9:00 v záhrade pri kostole.');
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(
+    page.getByText('Doplň dátum udalosti.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Uprav', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('input[type=date], input[type=time]')).toHaveCount(
+    0,
+  );
+  expect(state.records.size).toBe(1);
 });
 test('termín sa upraví priamo pri Kedy a automaticky uloží bez druhého odoslania', async ({
   page,

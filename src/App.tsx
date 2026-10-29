@@ -495,7 +495,7 @@ function AnnouncementForm() {
                                   {analysis.extracted.source}
                                 </small>
                               )}
-                            {saved && (
+                            {saved && analysis.extracted?.date && (
                               <EditableEventTime
                                 announcement={saved}
                                 disabled={busy}
