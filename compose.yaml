@@ -1,0 +1,54 @@
+name: autooznam
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_PATH: /data/announcements.sqlite
+      TRUST_PROXY: 1
+    volumes:
+      - data:/data
+    networks:
+      - web
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: web
+      traefik.http.routers.autooznam.rule: Host(`autooznam.spis-ai.com`)
+      traefik.http.routers.autooznam.entrypoints: websecure
+      traefik.http.routers.autooznam.tls: 'true'
+      traefik.http.routers.autooznam.tls.certresolver: tlschallenge
+      traefik.http.routers.autooznam.service: autooznam
+      traefik.http.services.autooznam.loadbalancer.server.port: '3001'
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+networks:
+  web:
+    external: true
+volumes:
+  data:

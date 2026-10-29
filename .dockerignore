@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+data
+.env
+.env.*
+.git
+.github
+test-results
+playwright-report
+*.log
+oznamy.json

@@ -1,0 +1,281 @@
+import { test, expect, type Page } from '@playwright/test';
+import {
+  measureText,
+  type WriteAnnouncement,
+  type SavedAnnouncement,
+} from '../../shared/contracts';
+const analysis = {
+  what: { present: true, detail: 'Brigáda' },
+  where: { present: true, detail: 'Záhrada pri kostole' },
+  when: { present: true, detail: 'V sobotu o 9:00' },
+  suggestion: null,
+  extracted: {
+    title: 'Farská brigáda',
+    location: 'Záhrada pri kostole',
+    date: '2026-11-07',
+    time: '09:00',
+    dateInferred: true,
+    source: 'v sobotu 7. novembra o 9:00',
+    timeZone: 'Europe/Bratislava' as const,
+    startsAt: '2026-11-07T08:00:00Z',
+    timingIssue: null,
+  },
+};
+async function mockApi(
+  page: Page,
+  options: {
+    missing?: boolean;
+    failed?: boolean;
+    long?: boolean;
+    loseFirstResponse?: boolean;
+  } = {},
+) {
+  const requests: WriteAnnouncement[] = [];
+  const records = new Map<string, SavedAnnouncement>();
+  const results = new Map<string, SavedAnnouncement>();
+  await page.route('**/api/announcements**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      const row = records.get(req.url().split('/').pop()!);
+      await route.fulfill({
+        status: row ? 200 : 404,
+        json: row || { error: 'Oznam sa nenašiel.' },
+      });
+      return;
+    }
+    const body = req.postDataJSON() as WriteAnnouncement;
+    requests.push(body);
+    const result: SavedAnnouncement = results.get(body.requestId) || {
+      publishOn: body.publishOn || [],
+      eventOverride: body.eventOverride ?? null,
+      id: body.id,
+      text: body.text,
+      name: body.name,
+      contact: body.contact,
+      revision: body.baseRevision + 1,
+      status: options.failed
+        ? 'review_failed'
+        : options.missing || options.long
+          ? 'needs_changes'
+          : 'pending',
+      reviewError: options.failed
+        ? 'Kontrola je nedostupná. Oznam je uložený.'
+        : null,
+      analysis: options.failed
+        ? null
+        : {
+            ...analysis,
+            where: options.missing
+              ? { present: false, detail: 'Doplň konkrétne miesto.' }
+              : analysis.where,
+            suggestion: options.long
+              ? 'Pozývame vás na brigádu pri kostole v sobotu o 9:00. Prineste si rukavice.'
+              : null,
+            metrics: measureText(body.text),
+          },
+    };
+    records.set(body.id, result);
+    results.set(body.requestId, result);
+    if (options.loseFirstResponse && requests.length === 1) {
+      await route.abort('failed');
+      return;
+    }
+    await route.fulfill({
+      status: body.baseRevision ? 200 : 201,
+      json: result,
+    });
+  });
+  return { requests, records };
+}
+async function fill(page: Page) {
+  await page.getByRole('button', { name: 'Vyskúšaj príklad' }).click();
+  await page.getByLabel('Tvoje meno').fill('Mária Nováková');
+  await page.getByLabel('E-mail alebo telefón').fill('maria@example.sk');
+}
+test('jedno tlačidlo uloží oznam s kontaktom a zobrazí kontrolu', async ({
+  page,
+}) => {
+  const state = await mockApi(page);
+  await page.goto('/');
+  await fill(page);
+  await expect(
+    page.getByRole('button', { name: 'Skontrolovať oznam' }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  await expect(page.getByText('Oznam je kompletný.')).toBeVisible();
+  expect(state.requests).toHaveLength(1);
+  expect(state.requests[0]).toMatchObject({
+    name: 'Mária Nováková',
+    contact: 'maria@example.sk',
+    baseRevision: 0,
+  });
+  expect(page.url()).toContain('#edit=');
+  await expect(page.getByText('Farská brigáda', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Záhrada pri kostole', { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('time')).toHaveAttribute(
+    'datetime',
+    '2026-11-07T08:00:00Z',
+  );
+  await expect(page.getByText('odvodený dátum')).toBeVisible();
+});
+test('neúplný oznam je uložený a ďalšie odoslanie upraví rovnaký záznam', async ({
+  page,
+}) => {
+  const state = await mockApi(page, { missing: true });
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByText('Doplň konkrétne miesto.')).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  await page
+    .getByLabel('Oznam', { exact: true })
+    .fill('Brigáda v záhrade pri kostole v sobotu o 9:00.');
+  await page.getByRole('button', { name: 'Ulož zmeny' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  expect(state.requests).toHaveLength(2);
+  expect(state.requests[1].id).toBe(state.requests[0].id);
+  expect(state.requests[1].baseRevision).toBe(1);
+  expect(state.records.size).toBe(1);
+});
+test('obnovenie stránky načíta uložený oznam, kontakt aj výsledok', async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  const link = page.url();
+  await page.reload();
+  await expect(page.getByRole('form', { name: 'Farský oznam' })).toBeVisible();
+  await expect(page.getByLabel('Tvoje meno')).toHaveValue('Mária Nováková');
+  await expect(page.getByLabel('E-mail alebo telefón')).toHaveValue(
+    'maria@example.sk',
+  );
+  await expect(page.getByText('Oznam je kompletný.')).toBeVisible();
+  expect(page.url()).toBe(link);
+});
+test('odkaz na oznam funguje aj v inom prehliadači bez pôvodnej relácie', async ({
+  page,
+  browser,
+}) => {
+  const state = await mockApi(page);
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  const context = await browser.newContext();
+  try {
+    const other = await context.newPage();
+    await other.route('**/api/announcements/*', (route) =>
+      route.fulfill({ json: [...state.records.values()][0] }),
+    );
+    await other.goto(page.url());
+    await expect(other.getByLabel('Tvoje meno')).toHaveValue('Mária Nováková');
+    await expect(
+      other.getByRole('button', { name: 'Ulož zmeny' }),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+test('výpadok AI nebráni uloženiu ani ďalšej úprave', async ({ page }) => {
+  const state = await mockApi(page, { failed: true });
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  await expect(
+    page.getByText('Kontrola je nedostupná. Oznam je uložený.'),
+  ).toBeVisible();
+  expect(state.records.size).toBe(1);
+  await expect(page.getByRole('button', { name: 'Ulož zmeny' })).toBeEnabled();
+});
+test('po strate odpovede opakuje rovnakú požiadavku bez duplicity', async ({
+  page,
+}) => {
+  const state = await mockApi(page, { loseFirstResponse: true });
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  expect(state.requests[0].requestId).toBe(state.requests[1].requestId);
+  expect(state.records.size).toBe(1);
+});
+test('skrátený návrh uloží ako ďalšiu verziu a nový oznam dostane nové ID', async ({
+  page,
+}) => {
+  const state = await mockApi(page, { long: true });
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Dlhý príklad' }).click();
+  expect(
+    measureText(await page.getByLabel('Oznam', { exact: true }).inputValue())
+      .words,
+  ).toBeGreaterThan(80);
+  await expect(
+    page.getByText('Oznam je príliš dlhý.', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Návrh skrátenia' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Použi tento návrh' }).click();
+  await page.getByRole('button', { name: 'Ulož zmeny' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  expect(state.requests[1].id).toBe(state.requests[0].id);
+  await page.getByRole('button', { name: 'Pridaj ďalší oznam' }).click();
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  expect(state.requests[2].id).not.toBe(state.requests[0].id);
+});
+test('obe nedele a ručný termín sa odošlú a obnovia po načítaní', async ({
+  page,
+}) => {
+  const state = await mockApi(page);
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('checkbox', { name: /Budúcu nedeľu/ }).check();
+  await page.getByText('Dátum udalosti', { exact: true }).first().click();
+  await page.getByLabel('Dátum udalosti', { exact: true }).fill('2026-12-24');
+  await page.getByLabel('Čas udalosti', { exact: true }).fill('22:00');
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  expect(state.requests[0].publishOn).toHaveLength(2);
+  expect(state.requests[0].eventOverride).toEqual({
+    date: '2026-12-24',
+    time: '22:00',
+  });
+  await page.reload();
+  await page.locator('.event-editor summary').click();
+  await expect(page.getByLabel('Dátum udalosti', { exact: true })).toHaveValue(
+    '2026-12-24',
+  );
+  await expect(
+    page.getByRole('checkbox', { name: /Budúcu nedeľu/ }),
+  ).toBeChecked();
+});
+test('mobilný formulár nemá pretekanie ani chyby v konzole', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(
+    page.getByRole('button', { name: 'Odošli oznam' }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
+  expect(errors).toEqual([]);
+});
