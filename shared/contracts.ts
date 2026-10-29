@@ -86,6 +86,13 @@ export const writeSchema = submissionSchema.extend({
   requestId: z.uuid(),
   baseRevision: z.number().int().nonnegative(),
 });
+export const eventPatchSchema = z
+  .object({
+    requestId: z.uuid(),
+    baseRevision: z.number().int().positive(),
+    eventOverride: eventOverrideSchema,
+  })
+  .strict();
 export function measureText(text: string) {
   const words = [
     ...new Intl.Segmenter('sk', { granularity: 'word' }).segment(text),

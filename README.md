@@ -8,11 +8,11 @@ Slovenská aplikácia na farské oznamy: React, TypeScript, Express 5, SQLite a 
 2. Vyber zverejnenie **túto nedeľu**, **budúcu nedeľu**, alebo obe.
 3. Klikni na **Odošli oznam**. Obsah aj kontakt sa uložia ešte pred AI kontrolou.
 4. Kontrola zobrazí čo/kde/kedy, extrahovaný nadpis, miesto a termín. Pri viac než 3 vetách alebo 80 slovách navrhne skrátenie. **Dlhý príklad** umožňuje funkciu vyskúšať.
-5. Cez **Dátum udalosti** môžeš ručne opraviť dátum a čas. **Ulož zmeny** aktualizuje rovnaký záznam a pridá verziu do histórie.
+5. Pri rozpoznanom **Kedy** klikni na **Uprav** a oprav dátum alebo čas. Termín sa automaticky uloží po krátkej pauze, bez ďalšieho odoslania alebo AI volania. **Ulož zmeny** slúži na úpravy textu, kontaktu a nedieľ zverejnenia.
 
 Nedeľa zverejnenia a dátum udalosti sú samostatné údaje. Relatívne výrazy ako „zajtra“ alebo „v utorok“ sa vyhodnocujú od prvej vybratej nedele. Napríklad pri zverejnení 1. novembra 2026 znamená „zajtra“ 2. novembra. Ak vyberieš obe nedele, zostáva jeden oznam s jedným termínom udalosti, ktorý sa objaví v oboch vydaniach; relatívny text sa pri druhom vydaní neposúva.
 
-Ručne zadaný termín má prednosť pred AI a zostáva zachovaný aj pri ďalších úpravách textu. **Použi termín z textu** zruší ručné nastavenie po uložení. Oznam zostáva uložený aj pri chýbajúcich údajoch alebo výpadku AI. Odoslanie znamená uloženie na spracovanie, nie automatické zverejnenie mimo tejto aplikácie ani odoslanie e-mailu.
+Ručne zadaný termín má prednosť pred AI a zostáva zachovaný aj pri ďalších úpravách textu. Vstupný formulár má iba text oznamu, meno a kontakt; editor dátumu je súčasťou výsledku kontroly. Oznam zostáva uložený aj pri chýbajúcich údajoch alebo výpadku AI. Odoslanie znamená uloženie na spracovanie, nie automatické zverejnenie mimo tejto aplikácie ani odoslanie e-mailu.
 
 ## Prehľad a export
 
@@ -62,6 +62,7 @@ SQLite nemá natívny datetime typ. Ukladajú sa samostatné `event_title`, `eve
 ## API
 
 - `POST /api/announcements`: JSON `id`, `requestId`, `baseRevision`, `text`, `name`, `contact`, `publishOn` (pole ISO nedieľ), `eventOverride` (`{date,time}` alebo `null`). Pri starších klientoch bez nových polí sa zachová predchádzajúce nastavenie, pri novom ozname sa použije najbližšia nedeľa.
+- `PATCH /api/announcements/:id/event`: samostatná automatická oprava termínu, JSON `requestId`, `baseRevision`, `eventOverride: {date,time}`. Zachová obsah a identitu, pridá verziu, nevolá AI.
 - `GET /api/announcements/:id`: aktuálna verzia vrátane kontaktu a nastavení.
 - `GET /api/reports/weekly?sunday=YYYY-MM-DD&format=json|txt`: verejný export pre konkrétnu nedeľu, bez kontaktov.
 - `GET /api/health`: základná dostupnosť, bez volania AI.

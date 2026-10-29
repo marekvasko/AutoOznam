@@ -151,6 +151,71 @@ describe('Výber nedele a ručný termín', () => {
     expect(response.body.analysis.extracted.startsAt).toBeNull();
   });
 });
+describe('Automatická oprava termínu', () => {
+  it('vytvorí ďalšiu verziu bez zmeny textu, kontaktu, nedieľ a bez nového AI volania', async () => {
+    const { app, storage, analyze } = setup();
+    const value = body({ publishOn: ['2026-11-01', '2026-11-08'] });
+    await post(app, value).expect(201);
+    const patch = {
+      requestId: randomUUID(),
+      baseRevision: 1,
+      eventOverride: { date: '2026-12-24', time: '22:00' },
+    };
+    const response = await request(app)
+      .patch(`/api/announcements/${value.id}/event`)
+      .send(patch)
+      .expect(200);
+    expect(response.body).toMatchObject({
+      id: value.id,
+      revision: 2,
+      text: value.text,
+      name: value.name,
+      contact: value.contact,
+      publishOn: value.publishOn,
+    });
+    expect(response.body.analysis.extracted).toMatchObject({
+      date: '2026-12-24',
+      time: '22:00',
+      startsAt: '2026-12-24T21:00:00Z',
+    });
+    expect(analyze).toHaveBeenCalledTimes(1);
+    const duplicate = await request(app)
+      .patch(`/api/announcements/${value.id}/event`)
+      .send(patch)
+      .expect(200);
+    expect(duplicate.body.revision).toBe(2);
+    expect(
+      weeklyReport(storage.reportRows(), '2026-11-01').futureEvents[0].date,
+    ).toBe('2026-12-24');
+  });
+  it('odmietne zastaranú verziu, nemožný dátum aj podstrčený text', async () => {
+    const { app, storage } = setup();
+    const value = body();
+    await post(app, value).expect(201);
+    const patch = {
+      requestId: randomUUID(),
+      baseRevision: 1,
+      eventOverride: { date: '2026-12-24', time: '22:00' },
+    };
+    await request(app)
+      .patch(`/api/announcements/${value.id}/event`)
+      .send({ ...patch, eventOverride: { date: '2026-02-30', time: '22:00' } })
+      .expect(400);
+    await request(app)
+      .patch(`/api/announcements/${value.id}/event`)
+      .send({ ...patch, text: 'Podstrčený oznam.' })
+      .expect(400);
+    await request(app)
+      .patch(`/api/announcements/${value.id}/event`)
+      .send(patch)
+      .expect(200);
+    await request(app)
+      .patch(`/api/announcements/${value.id}/event`)
+      .send({ ...patch, requestId: randomUUID() })
+      .expect(409);
+    expect(storage.get(value.id).revision).toBe(2);
+  });
+});
 describe('Týždenný prehľad', () => {
   it('rozdelí vybranú nedeľu, pondelok až nedeľu, neskoršie a neurčené udalosti bez minulých', () => {
     const { storage } = setup();

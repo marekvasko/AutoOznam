@@ -6,6 +6,7 @@ import { weeklyReport, reportText } from './report.js';
 import { isSunday, nextSunday } from '../shared/schedule.js';
 import {
   measureText,
+  eventPatchSchema,
   writeSchema,
   type AIResult,
 } from '../shared/contracts.js';
@@ -66,6 +67,22 @@ export function createApp(
   });
   app.get('/api/announcements/:id', (req, res) => {
     res.json(storage.get(z.uuid().parse(req.params.id)));
+  });
+  app.patch('/api/announcements/:id/event', (req, res) => {
+    const id = z.uuid().parse(req.params.id);
+    const patch = eventPatchSchema.parse(req.body);
+    const current = storage.get(id);
+    const { saved, duplicate } = storage.save({
+      id,
+      ...patch,
+      text: current.text,
+      name: current.name,
+      contact: current.contact,
+      publishOn: current.publishOn,
+    });
+    if (!duplicate)
+      storage.finish(id, saved.revision, current.analysis, current.reviewError);
+    res.json(storage.get(id));
   });
   const activeReviews = new Map<string, Promise<void>>();
   app.post('/api/announcements', async (req, res) => {

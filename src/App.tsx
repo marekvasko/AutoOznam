@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { informalFeedback } from './wording';
 import WeeklyOverview from './WeeklyOverview';
+import EditableEventTime from './EditableEventTime';
 import { nextSunday, addDays, displayDate } from '../shared/schedule';
 import { sample, longSample } from './examples';
 import {
@@ -93,6 +94,7 @@ function AnnouncementForm() {
   const [saved, setSaved] = useState<SavedAnnouncement | null>(null);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dateSaving, setDateSaving] = useState(false);
   const [loading, setLoading] = useState(!!session);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -140,7 +142,7 @@ function AnnouncementForm() {
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || loading) return;
+    if (busy || loading || dateSaving) return;
     const result = submissionSchema.safeParse({
       text,
       name,
@@ -248,7 +250,7 @@ function AnnouncementForm() {
               <button
                 type="button"
                 className="text-button"
-                disabled={busy}
+                disabled={busy || dateSaving}
                 onClick={() => {
                   changeText(sample);
                   textRef.current?.focus();
@@ -259,7 +261,7 @@ function AnnouncementForm() {
               <button
                 type="button"
                 className="text-button"
-                disabled={busy}
+                disabled={busy || dateSaving}
                 onClick={() => {
                   changeText(longSample);
                   textRef.current?.focus();
@@ -276,7 +278,7 @@ function AnnouncementForm() {
               maxLength={6000}
               minLength={10}
               required
-              readOnly={busy}
+              readOnly={busy || dateSaving}
               placeholder="Napr. Brigáda v sobotu o 9:00 pri farskom kostole."
               aria-describedby="text-count"
             />
@@ -293,7 +295,10 @@ function AnnouncementForm() {
                 Oznam je príliš dlhý. Pri odoslaní ti navrhneme skrátenie.
               </p>
             )}
-            <fieldset className="publication-picker" disabled={busy}>
+            <fieldset
+              className="publication-picker"
+              disabled={busy || dateSaving}
+            >
               <legend>Pridaj do oznamov</legend>
               <div className="publication-options">
                 {sundayOptions.map((date) => (
@@ -328,71 +333,6 @@ function AnnouncementForm() {
                 </p>
               )}
             </fieldset>
-            <details className="event-editor">
-              <summary>Dátum udalosti{eventOverride ? ' · ručne' : ''}</summary>
-              <div className="contact-fields">
-                <div>
-                  <label htmlFor="event-date">Dátum udalosti</label>
-                  <input
-                    id="event-date"
-                    type="date"
-                    disabled={busy}
-                    value={
-                      eventOverride
-                        ? (eventOverride.date ?? '')
-                        : (saved?.analysis?.extracted?.date ?? '')
-                    }
-                    onChange={(e) => {
-                      setEventOverride({
-                        date: e.target.value || null,
-                        time: eventOverride
-                          ? eventOverride.time
-                          : (saved?.analysis?.extracted?.time ?? null),
-                      });
-                      changed();
-                    }}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="event-time">Čas udalosti</label>
-                  <input
-                    id="event-time"
-                    type="time"
-                    disabled={busy}
-                    value={
-                      eventOverride
-                        ? (eventOverride.time ?? '')
-                        : (saved?.analysis?.extracted?.time ?? '')
-                    }
-                    onChange={(e) => {
-                      setEventOverride({
-                        date: eventOverride
-                          ? eventOverride.date
-                          : (saved?.analysis?.extracted?.date ?? null),
-                        time: e.target.value || null,
-                      });
-                      changed();
-                    }}
-                  />
-                </div>
-              </div>
-              {eventOverride && (
-                <>
-                  <p>Ručný termín má prednosť pred textom.</p>
-                  <button
-                    type="button"
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() => {
-                      setEventOverride(null);
-                      changed();
-                    }}
-                  >
-                    Použi termín z textu
-                  </button>
-                </>
-              )}
-            </details>
             <div className="contact-fields">
               <div>
                 <label htmlFor="name">Tvoje meno</label>
@@ -403,7 +343,7 @@ function AnnouncementForm() {
                   minLength={2}
                   maxLength={100}
                   value={name}
-                  disabled={busy}
+                  disabled={busy || dateSaving}
                   onChange={(e) => {
                     setName(e.target.value);
                     changed();
@@ -418,7 +358,7 @@ function AnnouncementForm() {
                   required
                   maxLength={150}
                   value={contact}
-                  disabled={busy}
+                  disabled={busy || dateSaving}
                   onChange={(e) => {
                     setContact(e.target.value);
                     changed();
@@ -443,7 +383,11 @@ function AnnouncementForm() {
             )}
             <div className="form-bottom">
               <p>Kontakt použijeme iba k tomuto oznamu.</p>
-              <button type="submit" className="primary" disabled={busy}>
+              <button
+                type="submit"
+                className="primary"
+                disabled={busy || dateSaving}
+              >
                 {busy ? (
                   <>
                     <LoaderCircle className="spin" size={17} />
@@ -542,6 +486,7 @@ function AnnouncementForm() {
                               <p>{informalFeedback(analysis[key].detail)}</p>
                             )}
                             {analysis.extracted?.source &&
+                              !saved?.eventOverride &&
                               (analysis.extracted.dateInferred ||
                                 !analysis.extracted.startsAt) &&
                               (analysis.extracted.date ||
@@ -550,6 +495,23 @@ function AnnouncementForm() {
                                   {analysis.extracted.source}
                                 </small>
                               )}
+                            {saved && (
+                              <EditableEventTime
+                                announcement={saved}
+                                disabled={busy}
+                                onBusyChange={setDateSaving}
+                                onSaved={(value) => {
+                                  setSaved(value);
+                                  setEventOverride(value.eventOverride);
+                                  if (!dirty) {
+                                    setText(value.text);
+                                    setName(value.name);
+                                    setContact(value.contact);
+                                    setPublishOn(value.publishOn);
+                                  }
+                                }}
+                              />
+                            )}
                             {analysis.extracted?.timingIssue && (
                               <p className="timing-issue">
                                 {informalFeedback(
@@ -569,7 +531,7 @@ function AnnouncementForm() {
                       <button
                         type="button"
                         className="text-button"
-                        disabled={busy}
+                        disabled={busy || dateSaving}
                         onClick={() => {
                           changeText(analysis.suggestion!);
                           textRef.current?.focus();
@@ -609,7 +571,7 @@ function AnnouncementForm() {
                 <button
                   type="button"
                   className="text-button"
-                  disabled={busy}
+                  disabled={busy || dateSaving}
                   onClick={reset}
                 >
                   Pridaj ďalší oznam

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { parseEvent } from '../../server/event';
 import {
   measureText,
   type WriteAnnouncement,
@@ -28,9 +29,16 @@ async function mockApi(
     failed?: boolean;
     long?: boolean;
     loseFirstResponse?: boolean;
+    loseFirstDateResponse?: boolean;
   } = {},
 ) {
   const requests: WriteAnnouncement[] = [];
+  const datePatches: Array<{
+    requestId: string;
+    baseRevision: number;
+    eventOverride: { date: string | null; time: string | null };
+  }> = [];
+  const dateResults = new Map<string, SavedAnnouncement>();
   const records = new Map<string, SavedAnnouncement>();
   const results = new Map<string, SavedAnnouncement>();
   await page.route('**/api/announcements**', async (route) => {
@@ -41,6 +49,35 @@ async function mockApi(
         status: row ? 200 : 404,
         json: row || { error: 'Oznam sa nenašiel.' },
       });
+      return;
+    }
+    if (req.method() === 'PATCH') {
+      const patch = req.postDataJSON() as (typeof datePatches)[number];
+      datePatches.push(patch);
+      const id = req.url().split('/').at(-2)!;
+      const previous = records.get(id)!;
+      const result: SavedAnnouncement = dateResults.get(patch.requestId) || {
+        ...previous,
+        revision: previous.revision + 1,
+        eventOverride: patch.eventOverride,
+        analysis: previous.analysis
+          ? {
+              ...previous.analysis,
+              extracted: parseEvent({
+                ...previous.analysis.extracted!,
+                ...patch.eventOverride,
+                dateInferred: false,
+              }),
+            }
+          : null,
+      };
+      records.set(id, result);
+      dateResults.set(patch.requestId, result);
+      if (options.loseFirstDateResponse && datePatches.length === 1) {
+        await route.abort('failed');
+        return;
+      }
+      await route.fulfill({ json: result });
       return;
     }
     const body = req.postDataJSON() as WriteAnnouncement;
@@ -85,7 +122,7 @@ async function mockApi(
       json: result,
     });
   });
-  return { requests, records };
+  return { requests, records, datePatches };
 }
 async function fill(page: Page) {
   await page.getByRole('button', { name: 'Vyskúšaj príklad' }).click();
@@ -235,31 +272,59 @@ test('skrátený návrh uloží ako ďalšiu verziu a nový oznam dostane nové 
   await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
   expect(state.requests[2].id).not.toBe(state.requests[0].id);
 });
-test('obe nedele a ručný termín sa odošlú a obnovia po načítaní', async ({
+test('termín sa upraví priamo pri Kedy a automaticky uloží bez druhého odoslania', async ({
   page,
 }) => {
   const state = await mockApi(page);
   await page.goto('/');
   await fill(page);
+  await expect(page.locator('input[type=date], input[type=time]')).toHaveCount(
+    0,
+  );
   await page.getByRole('checkbox', { name: /Budúcu nedeľu/ }).check();
-  await page.getByText('Dátum udalosti', { exact: true }).first().click();
-  await page.getByLabel('Dátum udalosti', { exact: true }).fill('2026-12-24');
-  await page.getByLabel('Čas udalosti', { exact: true }).fill('22:00');
   await page.getByRole('button', { name: 'Odošli oznam' }).click();
-  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
-  expect(state.requests[0].publishOn).toHaveLength(2);
-  expect(state.requests[0].eventOverride).toEqual({
+  await page.getByRole('button', { name: 'Uprav', exact: true }).click();
+  await expect(page.getByLabel('Dátum', { exact: true })).toHaveValue(
+    '2026-11-07',
+  );
+  await page.getByLabel('Dátum', { exact: true }).fill('2026-12-24');
+  await page.getByLabel('Čas', { exact: true }).fill('22:00');
+  await expect(page.locator('.date-save-status')).toHaveText('Uložené');
+  expect(state.requests).toHaveLength(1);
+  expect(state.datePatches).toHaveLength(1);
+  expect(state.datePatches[0].eventOverride).toEqual({
     date: '2026-12-24',
     time: '22:00',
   });
+  const record = [...state.records.values()][0];
+  expect(record.revision).toBe(2);
+  expect(record.publishOn).toHaveLength(2);
+  await expect(page.locator('time')).toHaveAttribute(
+    'datetime',
+    '2026-12-24T21:00:00Z',
+  );
   await page.reload();
-  await page.locator('.event-editor summary').click();
-  await expect(page.getByLabel('Dátum udalosti', { exact: true })).toHaveValue(
+  await page.getByRole('button', { name: 'Uprav', exact: true }).click();
+  await expect(page.getByLabel('Dátum', { exact: true })).toHaveValue(
     '2026-12-24',
   );
-  await expect(
-    page.getByRole('checkbox', { name: /Budúcu nedeľu/ }),
-  ).toBeChecked();
+  await expect(page.getByLabel('Čas', { exact: true })).toHaveValue('22:00');
+});
+test('pri strate odpovede termín neoznačí za uložený a opakuje rovnakú požiadavku', async ({
+  page,
+}) => {
+  const state = await mockApi(page, { loseFirstDateResponse: true });
+  await page.goto('/');
+  await fill(page);
+  await page.getByRole('button', { name: 'Odošli oznam' }).click();
+  await page.getByRole('button', { name: 'Uprav', exact: true }).click();
+  await page.getByLabel('Dátum', { exact: true }).fill('2026-12-24');
+  await expect(page.locator('.date-save-status')).toHaveText('Neuložené');
+  await page.getByRole('button', { name: 'Skús uložiť znova' }).click();
+  await expect(page.locator('.date-save-status')).toHaveText('Uložené');
+  expect(state.datePatches[0].requestId).toBe(state.datePatches[1].requestId);
+  expect([...state.records.values()][0].revision).toBe(2);
+  expect(state.requests).toHaveLength(1);
 });
 test('mobilný formulár nemá pretekanie ani chyby v konzole', async ({
   page,
