@@ -6,6 +6,8 @@ import { weeklyReport, reportText } from './report.js';
 import { isSunday, nextSunday } from '../shared/schedule.js';
 import {
   measureText,
+  savedAnnouncementSchema,
+  type StoredAnnouncement,
   eventPatchSchema,
   writeSchema,
   type AIResult,
@@ -21,6 +23,8 @@ export function createApp(
   ) => Promise<AIResult> = analyzeWithOpenRouter,
 ) {
   const app = express();
+  const publicAnnouncement = (stored: StoredAnnouncement) =>
+    savedAnnouncementSchema.parse(stored);
   app.disable('x-powered-by');
   if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
   app.use((_req, res, next) => {
@@ -66,7 +70,7 @@ export function createApp(
     res.json(report);
   });
   app.get('/api/announcements/:id', (req, res) => {
-    res.json(storage.get(z.uuid().parse(req.params.id)));
+    res.json(publicAnnouncement(storage.get(z.uuid().parse(req.params.id))));
   });
   app.patch('/api/announcements/:id/event', (req, res) => {
     const id = z.uuid().parse(req.params.id);
@@ -82,7 +86,7 @@ export function createApp(
     });
     if (!duplicate)
       storage.finish(id, saved.revision, current.analysis, current.reviewError);
-    res.json(storage.get(id));
+    res.json(publicAnnouncement(storage.get(id)));
   });
   const activeReviews = new Map<string, Promise<void>>();
   app.post('/api/announcements', async (req, res) => {
@@ -122,7 +126,7 @@ export function createApp(
     }
     res
       .status(value.baseRevision === 0 ? 201 : 200)
-      .json(storage.get(value.id));
+      .json(publicAnnouncement(storage.get(value.id)));
   });
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Táto adresa neexistuje.' });

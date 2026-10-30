@@ -17,7 +17,7 @@ import {
   formatEventDate,
   MAX_WORDS,
   MAX_SENTENCES,
-  submissionSchema,
+  writeSchema,
   savedAnnouncementSchema,
   type SavedAnnouncement,
   type WriteAnnouncement,
@@ -114,7 +114,7 @@ function AnnouncementForm() {
         setSaved(value);
         setText(value.text);
         setName(value.name);
-        setContact(value.contact);
+        setContact('');
         setPublishOn(value.publishOn.length ? value.publishOn : [nextSunday()]);
         setEventOverride(value.eventOverride);
         remember(initial);
@@ -143,18 +143,21 @@ function AnnouncementForm() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (busy || loading || dateSaving) return;
-    const result = submissionSchema.safeParse({
+    const current = session || { id: crypto.randomUUID() };
+    const result = writeSchema.safeParse({
       text,
       name,
-      contact,
+      contact: contact.trim() || undefined,
       publishOn,
       eventOverride,
+      id: current.id,
+      requestId: crypto.randomUUID(),
+      baseRevision: saved?.revision || 0,
     });
     if (!result.success) {
       setError(result.error.issues[0].message);
       return;
     }
-    const current = session || { id: crypto.randomUUID() };
     setSession(current);
     remember(current);
     // Reuse the request ID after a lost response, so retrying cannot create another version.
@@ -182,7 +185,7 @@ function AnnouncementForm() {
       setSaved(value);
       setText(value.text);
       setName(value.name);
-      setContact(value.contact);
+      setContact('');
       setPublishOn(value.publishOn);
       setEventOverride(value.eventOverride);
       setDirty(false);
@@ -355,7 +358,8 @@ function AnnouncementForm() {
                 <input
                   id="contact"
                   autoComplete="email"
-                  required
+                  required={!saved}
+                  placeholder={saved ? 'Nový kontakt (nepovinné)' : undefined}
                   maxLength={150}
                   value={contact}
                   disabled={busy || dateSaving}
@@ -506,7 +510,6 @@ function AnnouncementForm() {
                                   if (!dirty) {
                                     setText(value.text);
                                     setName(value.name);
-                                    setContact(value.contact);
                                     setPublishOn(value.publishOn);
                                   }
                                 }}

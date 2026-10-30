@@ -27,7 +27,7 @@ Termíny udalostí v prehľade vychádzajú z aktuálnej verzie a rešpektujú r
 
 **Stiahni TXT** vytvorí text pripravený na čítanie, **Stiahni JSON** štruktúrované dáta, **Vytlač / PDF** otvorí tlač prehliadača. Kontakty nie sú súčasťou týždenného exportu. Prehľad sa vytvára na požiadanie; automatické doručovanie e-mailom nie je nastavené.
 
-Podľa zadania sú prehľad, export aj úpravy verejné, bez prístupových práv a prihlasovania. Oznam má stále unikátne ID a odkaz `/#edit=ID`. Pôvodné odkazy `/#edit=ID.TOKEN` zostávajú funkčné. Každý s prístupom k aplikácii môže cez prehľad otvoriť a upraviť oznam vrátane jeho kontaktných údajov. Pôvodné meno a kontakt aj história verzií sa uchovávajú; ide o údaje zadané používateľom, bez overenia identity.
+Podľa zadania sú prehľad, export aj úpravy verejné, bez prístupových práv a prihlasovania. Oznam má stále unikátne ID a odkaz `/#edit=ID`. Pôvodné odkazy `/#edit=ID.TOKEN` zostávajú funkčné. Každý s prístupom k aplikácii môže cez prehľad otvoriť a upraviť verejné údaje oznamu. Kontaktné pole sa nikdy nevracia vo verejných odpovediach API ani v exportoch; číta sa iba priamo z databázy. Pri novom ozname je povinné, pri úprave ho možno vynechať a server zachová uloženú hodnotu. Kontakt vo formulári po otvorení odkazu nie je predvyplnený. Pôvodné meno a kontakt aj história verzií sa uchovávajú; ide o údaje zadané používateľom, bez overenia identity.
 
 ## Lokálne spustenie
 
@@ -61,9 +61,9 @@ SQLite nemá natívny datetime typ. Ukladajú sa samostatné `event_title`, `eve
 
 ## API
 
-- `POST /api/announcements`: JSON `id`, `requestId`, `baseRevision`, `text`, `name`, `contact`, `publishOn` (pole ISO nedieľ), `eventOverride` (`{date,time}` alebo `null`). Pri starších klientoch bez nových polí sa zachová predchádzajúce nastavenie, pri novom ozname sa použije najbližšia nedeľa.
+- `POST /api/announcements`: JSON `id`, `requestId`, `baseRevision`, `text`, `name`, `contact` (povinný iba pri vytvorení), `publishOn` (pole ISO nedieľ), `eventOverride` (`{date,time}` alebo `null`). Pri starších klientoch bez nových polí sa zachová predchádzajúce nastavenie, pri novom ozname sa použije najbližšia nedeľa.
 - `PATCH /api/announcements/:id/event`: samostatná automatická oprava termínu, JSON `requestId`, `baseRevision`, `eventOverride: {date,time}`. Zachová obsah a identitu, pridá verziu, nevolá AI.
-- `GET /api/announcements/:id`: aktuálna verzia vrátane kontaktu a nastavení.
+- `GET /api/announcements/:id`: aktuálna verejná verzia bez kontaktu, vrátane nastavení.
 - `GET /api/reports/weekly?sunday=YYYY-MM-DD&format=json|txt`: verejný export pre konkrétnu nedeľu, bez kontaktov.
 - `GET /api/health`: základná dostupnosť, bez volania AI.
 
@@ -84,9 +84,9 @@ Kontajner beží pod používateľom `node`, s read-only koreňovým systémom a
 
 `.env` sa nekopíruje do image ani do GitHub repozitára. Po zmene kľúča: `docker compose up -d --force-recreate app`.
 
-## Úplný administrátorský export
+## Lokálny export histórie
 
-Oproti verejnému týždennému exportu obsahuje tento lokálny export aj pôvodné kontakty a históriu verzií:
+Lokálny export obsahuje verejné údaje a históriu verzií, bez aktuálnych aj pôvodných kontaktných údajov:
 
 ```sh
 npm run export -- ./oznamy.json
@@ -95,7 +95,7 @@ docker compose exec -T app node build/server/export.js /data/oznamy-export.json
 docker compose cp app:/data/oznamy-export.json ./oznamy.json
 ```
 
-Cieľový súbor ešte nesmie existovať. Lokálny export obsahuje kontakty; nepatrí do repozitára. Nastav si vlastnú dobu uchovávania dát a pravidelné zálohy.
+Cieľový súbor ešte nesmie existovať. Kontaktné údaje zostávajú v SQLite v tabuľkách `announcements` a `announcement_versions`, vrátane `original_contact`; prístup k nim má iba kód a správca s priamym databázovým prístupom. Ani GET, ani odpovede po POST a PATCH ich neserializujú. Text oznamu je verejný obsah zadaný autorom; toto oddelenie sa týka samostatného kontaktného poľa. Nastav si vlastnú dobu uchovávania dát a pravidelné zálohy.
 
 ## Overenie
 

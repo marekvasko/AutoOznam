@@ -13,7 +13,7 @@ const db = new DatabaseSync(
 try {
   const rows = db
     .prepare(
-      'SELECT id, text, name, contact, original_name, original_contact, revision, status, created_at, updated_at, event_title, event_location, event_date, event_time, event_time_zone, event_starts_at_ms, publication_dates, event_override FROM announcements ORDER BY created_at DESC',
+      'SELECT id, text, name, original_name, revision, status, created_at, updated_at, event_title, event_location, event_date, event_time, event_time_zone, event_starts_at_ms, publication_dates, event_override FROM announcements ORDER BY created_at DESC',
     )
     .all();
   writeFileSync(
@@ -23,7 +23,7 @@ try {
         ...row,
         versions: db
           .prepare(
-            'SELECT revision, text, name, contact, status, review, review_error, created_at, event_title, event_location, event_date, event_time, event_time_zone, event_starts_at_ms, publication_dates, event_override FROM announcement_versions WHERE announcement_id = ? ORDER BY revision',
+            'SELECT revision, text, name, status, review, review_error, created_at, event_title, event_location, event_date, event_time, event_time_zone, event_starts_at_ms, publication_dates, event_override FROM announcement_versions WHERE announcement_id = ? ORDER BY revision',
           )
           .all(row.id as string),
       })),

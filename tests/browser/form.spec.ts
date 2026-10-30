@@ -89,7 +89,6 @@ async function mockApi(
       id: body.id,
       text: body.text,
       name: body.name,
-      contact: body.contact,
       revision: body.baseRevision + 1,
       status: options.failed
         ? 'review_failed'
@@ -190,10 +189,10 @@ test('neúplný oznam je uložený a ďalšie odoslanie upraví rovnaký záznam
   expect(state.requests[1].baseRevision).toBe(1);
   expect(state.records.size).toBe(1);
 });
-test('obnovenie stránky načíta uložený oznam, kontakt aj výsledok', async ({
+test('obnovenie stránky načíta oznam bez kontaktu a umožní ďalšiu úpravu', async ({
   page,
 }) => {
-  await mockApi(page);
+  const state = await mockApi(page);
   await page.goto('/');
   await fill(page);
   await page.getByRole('button', { name: 'Odošli oznam' }).click();
@@ -202,11 +201,15 @@ test('obnovenie stránky načíta uložený oznam, kontakt aj výsledok', async 
   await page.reload();
   await expect(page.getByRole('form', { name: 'Farský oznam' })).toBeVisible();
   await expect(page.getByLabel('Tvoje meno')).toHaveValue('Mária Nováková');
-  await expect(page.getByLabel('E-mail alebo telefón')).toHaveValue(
-    'maria@example.sk',
-  );
+  await expect(page.getByLabel('E-mail alebo telefón')).toHaveValue('');
   await expect(page.getByText('Oznam je kompletný.')).toBeVisible();
   expect(page.url()).toBe(link);
+  await page
+    .getByLabel('Oznam', { exact: true })
+    .fill('Brigáda pri kostole v sobotu o 9:00.');
+  await page.getByRole('button', { name: 'Ulož zmeny' }).click();
+  await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
+  expect(state.requests[1]).not.toHaveProperty('contact');
 });
 test('odkaz na oznam funguje aj v inom prehliadači bez pôvodnej relácie', async ({
   page,

@@ -81,11 +81,21 @@ export const submissionSchema = z.object({
       'Zadaj platný e-mail alebo telefónne číslo.',
     ),
 });
-export const writeSchema = submissionSchema.extend({
-  id: z.uuid(),
-  requestId: z.uuid(),
-  baseRevision: z.number().int().nonnegative(),
-});
+export const writeSchema = submissionSchema
+  .extend({
+    id: z.uuid(),
+    requestId: z.uuid(),
+    baseRevision: z.number().int().nonnegative(),
+    contact: submissionSchema.shape.contact.optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.baseRevision === 0 && value.contact === undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['contact'],
+        message: 'Zadaj platný e-mail alebo telefónne číslo.',
+      });
+  });
 export const eventPatchSchema = z
   .object({
     requestId: z.uuid(),
@@ -113,7 +123,7 @@ export type Analysis = Omit<AIResult, 'extracted'> & {
 };
 export type AnnouncementStatus =
   'checking' | 'pending' | 'needs_changes' | 'review_failed';
-export const savedAnnouncementSchema = submissionSchema.extend({
+export const storedAnnouncementSchema = submissionSchema.extend({
   publishOn: z.array(z.iso.date()).default([]),
   eventOverride: eventOverrideSchema.nullable().default(null),
   id: z.uuid(),
@@ -133,6 +143,11 @@ export const savedAnnouncementSchema = submissionSchema.extend({
     .nullable(),
   reviewError: z.string().nullable(),
 });
+export type StoredAnnouncement = z.infer<typeof storedAnnouncementSchema>;
+// Public responses use an explicit allowlist and never contain the private contact.
+export const savedAnnouncementSchema = storedAnnouncementSchema
+  .omit({ contact: true })
+  .strip();
 export type SavedAnnouncement = z.infer<typeof savedAnnouncementSchema>;
 export type WriteAnnouncement = z.infer<typeof writeSchema>;
 

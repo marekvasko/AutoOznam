@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import type {
   Analysis,
   AnnouncementStatus,
-  SavedAnnouncement,
+  StoredAnnouncement,
   WriteAnnouncement,
 } from '../shared/contracts.js';
 import { ServiceError } from './openrouter.js';
@@ -87,7 +87,7 @@ export function createStorage(path: string) {
   // Preserve the pre-migration version of existing announcements, too.
   db.exec(`INSERT OR IGNORE INTO announcement_versions (announcement_id, revision, request_id, text, name, contact, review, status, publication_dates, event_override)
     SELECT id, revision, 'legacy-' || id, text, name, contact, review, status, publication_dates, event_override FROM announcements`);
-  const get = (id: string, _legacyToken?: string): SavedAnnouncement => {
+  const get = (id: string, _legacyToken?: string): StoredAnnouncement => {
     const row = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
     if (!row) throw new ServiceError(404, 'Oznam sa nenašiel.');
     const review = JSON.parse(row.review as string);
@@ -111,13 +111,19 @@ export function createStorage(path: string) {
     save(
       value: WriteAnnouncement,
       _legacyToken?: string,
-    ): { saved: SavedAnnouncement; duplicate: boolean } {
+    ): { saved: StoredAnnouncement; duplicate: boolean } {
       db.exec('BEGIN IMMEDIATE');
       try {
         const existing = db
           .prepare('SELECT id FROM announcements WHERE id = ?')
           .get(value.id);
         const previous = existing ? get(value.id) : null;
+        const contact = value.contact ?? previous?.contact;
+        if (contact === undefined)
+          throw new ServiceError(
+            400,
+            'Zadaj platný e-mail alebo telefónne číslo.',
+          );
         const publishOn = value.publishOn ??
           previous?.publishOn ?? [nextSunday()];
         const eventOverride =
@@ -136,7 +142,7 @@ export function createStorage(path: string) {
             request.revision !== previous.revision ||
             request.text !== value.text ||
             request.name !== value.name ||
-            request.contact !== value.contact ||
+            request.contact !== contact ||
             request.publication_dates !== publicationJson ||
             request.event_override !== overrideJson
           )
@@ -156,7 +162,7 @@ export function createStorage(path: string) {
         if (previous) {
           db.prepare(
             `UPDATE announcements SET text=?, name=?, contact=?, review='null', status='checking', review_error=NULL, event_title=NULL, event_location=NULL, event_date=NULL, event_time=NULL, event_time_zone=NULL, event_starts_at_ms=NULL, revision=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
-          ).run(value.text, value.name, value.contact, revision, value.id);
+          ).run(value.text, value.name, contact, revision, value.id);
         } else {
           db.prepare(
             `INSERT INTO announcements (id, analysis_id, text, name, contact, review, status, original_name, original_contact, updated_at) VALUES (?, ?, ?, ?, ?, 'null', 'checking', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
@@ -165,9 +171,9 @@ export function createStorage(path: string) {
             value.id,
             value.text,
             value.name,
-            value.contact,
+            contact,
             value.name,
-            value.contact,
+            contact,
           );
         }
         db.prepare(
@@ -178,7 +184,7 @@ export function createStorage(path: string) {
           value.requestId,
           value.text,
           value.name,
-          value.contact,
+          contact,
         );
         db.prepare(
           'UPDATE announcements SET publication_dates=?, event_override=? WHERE id=?',
