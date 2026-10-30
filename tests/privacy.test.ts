@@ -24,28 +24,30 @@ const review: AIResult = {
 };
 const stores: Storage[] = [];
 afterEach(() => stores.splice(0).forEach((store) => store.close()));
+const PRIVATE_NAME = 'Súkromný odosielateľ 7c31';
 const input = (contact: string) => ({
   id: randomUUID(),
   requestId: randomUUID(),
   baseRevision: 0,
   text: 'Brigáda 7. novembra o 9:00 v záhrade pri kostole.',
-  name: 'Mária',
+  name: PRIVATE_NAME,
   contact,
   publishOn: ['2026-11-01'],
 });
 function assertPrivate(body: unknown, ...secrets: string[]) {
   const encoded = typeof body === 'string' ? body : JSON.stringify(body);
-  for (const secret of secrets) expect(encoded).not.toContain(secret);
+  for (const secret of [PRIVATE_NAME, ...secrets])
+    expect(encoded).not.toContain(secret);
   if (typeof body === 'object' && body !== null) {
     for (const [key, value] of Object.entries(body)) {
-      expect(key).not.toMatch(/^(?:original_)?contact$/i);
+      expect(key).not.toMatch(/^(?:original_)?(?:name|contact)$/i);
       if (value && typeof value === 'object') assertPrivate(value, ...secrets);
     }
   }
 }
-describe('Kontakt dostupný iba z databázy', () => {
+describe('Identita zadávateľa dostupná iba z databázy', () => {
   it.each(['private.person+hidden@example.sk', '+421 905 987 654'])(
-    'nevráti kontakt %s cez vytvorenie, načítanie, úpravy ani export',
+    'nevráti meno ani kontakt %s cez vytvorenie, načítanie, úpravy ani export',
     async (secret) => {
       const storage = createStorage(':memory:');
       stores.push(storage);
@@ -57,11 +59,16 @@ describe('Kontakt dostupný iba z databázy', () => {
         .expect(201);
       assertPrivate(created.body, secret);
       expect(storage.get(body.id).contact).toBe(secret);
+      expect(storage.get(body.id).name).toBe(PRIVATE_NAME);
       const loaded = await request(app)
         .get(`/api/announcements/${body.id}`)
         .expect(200);
       assertPrivate(loaded.body, secret);
-      const { contact: _privateContact, ...withoutContact } = body;
+      const {
+        contact: _privateContact,
+        name: _privateName,
+        ...withoutContact
+      } = body;
       const edit = {
         ...withoutContact,
         baseRevision: 1,
@@ -74,6 +81,7 @@ describe('Kontakt dostupný iba z databázy', () => {
         .expect(200);
       assertPrivate(changed.body, secret);
       expect(storage.get(body.id).contact).toBe(secret);
+      expect(storage.get(body.id).name).toBe(PRIVATE_NAME);
       const retry = await request(app)
         .post('/api/announcements')
         .send(edit)
@@ -90,6 +98,7 @@ describe('Kontakt dostupný iba z databázy', () => {
         .expect(200);
       assertPrivate(date.body, secret);
       expect(storage.get(body.id).contact).toBe(secret);
+      expect(storage.get(body.id).name).toBe(PRIVATE_NAME);
       for (const format of ['json', 'txt']) {
         const response = await request(app)
           .get(`/api/reports/weekly?sunday=2026-11-01&format=${format}`)
@@ -114,15 +123,19 @@ describe('Kontakt dostupný iba z databázy', () => {
       assertPrivate(final.body, secret, updatedContact);
     },
   );
-  it('kontakt je povinný pri novom ozname, neprítomnosť pri úprave ho nevymaže', async () => {
+  it('meno aj kontakt sú povinné pri novom ozname', async () => {
     const storage = createStorage(':memory:');
     stores.push(storage);
     const app = createApp(storage, async () => review);
-    const { contact: _unused, ...body } = input('private@example.sk');
-    await request(app).post('/api/announcements').send(body).expect(400);
-    expect(() => storage.get(body.id)).toThrow();
+    for (const key of ['name', 'contact'] as const) {
+      const body: Partial<ReturnType<typeof input>> =
+        input('private@example.sk');
+      delete body[key];
+      await request(app).post('/api/announcements').send(body).expect(400);
+      expect(() => storage.get(body.id!)).toThrow();
+    }
   });
-  it('lokálny export neobsahuje aktuálny ani pôvodný kontakt z histórie', () => {
+  it('lokálny export neobsahuje aktuálne ani pôvodné meno a kontakt z histórie', () => {
     const directory = mkdtempSync(join(tmpdir(), 'autooznam-private-'));
     try {
       const path = join(directory, 'db.sqlite');
@@ -133,6 +146,7 @@ describe('Kontakt dostupný iba z databázy', () => {
         storage.save({
           ...body,
           contact: 'private.updated@example.sk',
+          name: 'Súkromný upravený odosielateľ 2d70',
           requestId: randomUUID(),
           baseRevision: 1,
         });
@@ -150,6 +164,7 @@ describe('Kontakt dostupný iba z databázy', () => {
         output,
         'private.original@example.sk',
         'private.updated@example.sk',
+        'Súkromný upravený odosielateľ 2d70',
       );
       expect(output[0].versions).toHaveLength(2);
     } finally {

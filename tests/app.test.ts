@@ -203,7 +203,8 @@ describe('Uloženie a kontrola jedným odoslaním', () => {
     const restored = await request(app)
       .get(`/api/announcements/${value.id}`)
       .expect(200);
-    expect(restored.body.name).toBe(value.name);
+    expect(restored.body).not.toHaveProperty('name');
+    expect(restored.body).not.toHaveProperty('contact');
     const changed = await request(app)
       .post('/api/announcements')
       .send({

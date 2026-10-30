@@ -27,7 +27,7 @@ Termíny udalostí v prehľade vychádzajú z aktuálnej verzie a rešpektujú r
 
 **Stiahni TXT** vytvorí text pripravený na čítanie, **Stiahni JSON** štruktúrované dáta, **Vytlač / PDF** otvorí tlač prehliadača. Kontakty nie sú súčasťou týždenného exportu. Prehľad sa vytvára na požiadanie; automatické doručovanie e-mailom nie je nastavené.
 
-Podľa zadania sú prehľad, export aj úpravy verejné, bez prístupových práv a prihlasovania. Oznam má stále unikátne ID a odkaz `/#edit=ID`. Pôvodné odkazy `/#edit=ID.TOKEN` zostávajú funkčné. Každý s prístupom k aplikácii môže cez prehľad otvoriť a upraviť verejné údaje oznamu. Kontaktné pole sa nikdy nevracia vo verejných odpovediach API ani v exportoch; číta sa iba priamo z databázy. Pri novom ozname je povinné, pri úprave ho možno vynechať a server zachová uloženú hodnotu. Kontakt vo formulári po otvorení odkazu nie je predvyplnený. Pôvodné meno a kontakt aj história verzií sa uchovávajú; ide o údaje zadané používateľom, bez overenia identity.
+Podľa zadania sú prehľad, export aj úpravy verejné, bez prístupových práv a prihlasovania. Oznam má stále unikátne ID a odkaz `/#edit=ID`. Pôvodné odkazy `/#edit=ID.TOKEN` zostávajú funkčné. Každý s prístupom k aplikácii môže cez prehľad otvoriť a upraviť verejné údaje oznamu. Meno aj kontakt zadávateľa sa nikdy nevracajú vo verejných odpovediach API ani v exportoch; čítajú sa iba priamo z databázy. Pri novom ozname sú povinné, pri úprave sa vynechajú a server zachová uložené hodnoty. Po uložení aj pri otvorení odkazu zostanú oba vstupy vo formulári viditeľné, disabled s hodnotou „Anonymné“; tento text sa neposiela na server. Pôvodné meno a kontakt aj história verzií sa uchovávajú; ide o údaje zadané používateľom, bez overenia identity.
 
 ## Lokálne spustenie
 
@@ -61,10 +61,10 @@ SQLite nemá natívny datetime typ. Ukladajú sa samostatné `event_title`, `eve
 
 ## API
 
-- `POST /api/announcements`: JSON `id`, `requestId`, `baseRevision`, `text`, `name`, `contact` (povinný iba pri vytvorení), `publishOn` (pole ISO nedieľ), `eventOverride` (`{date,time}` alebo `null`). Pri starších klientoch bez nových polí sa zachová predchádzajúce nastavenie, pri novom ozname sa použije najbližšia nedeľa.
+- `POST /api/announcements`: JSON `id`, `requestId`, `baseRevision`, `text`, `name`, `contact` (povinné iba pri vytvorení), `publishOn` (pole ISO nedieľ), `eventOverride` (`{date,time}` alebo `null`). Pri starších klientoch bez nových polí sa zachová predchádzajúce nastavenie, pri novom ozname sa použije najbližšia nedeľa.
 - `PATCH /api/announcements/:id/event`: samostatná automatická oprava termínu, JSON `requestId`, `baseRevision`, `eventOverride: {date,time}`. Zachová obsah a identitu, pridá verziu, nevolá AI.
-- `GET /api/announcements/:id`: aktuálna verejná verzia bez kontaktu, vrátane nastavení.
-- `GET /api/reports/weekly?sunday=YYYY-MM-DD&format=json|txt`: verejný export pre konkrétnu nedeľu, bez kontaktov.
+- `GET /api/announcements/:id`: aktuálna verejná verzia bez mena a kontaktu zadávateľa, vrátane nastavení.
+- `GET /api/reports/weekly?sunday=YYYY-MM-DD&format=json|txt`: verejný export pre konkrétnu nedeľu, bez mien a kontaktov zadávateľov.
 - `GET /api/health`: základná dostupnosť, bez volania AI.
 
 API má limit 30 požiadaviek za 15 minút na IP a 35-sekundový timeout AI. `TRUST_PROXY=1` je pre jeden dôveryhodný reverzný proxy server. SQLite je určená pre jednu inštanciu s trvalým diskom.
@@ -86,7 +86,7 @@ Kontajner beží pod používateľom `node`, s read-only koreňovým systémom a
 
 ## Lokálny export histórie
 
-Lokálny export obsahuje verejné údaje a históriu verzií, bez aktuálnych aj pôvodných kontaktných údajov:
+Lokálny export obsahuje verejné údaje a históriu verzií, bez aktuálnych aj pôvodných mien a kontaktov zadávateľov:
 
 ```sh
 npm run export -- ./oznamy.json
@@ -95,7 +95,7 @@ docker compose exec -T app node build/server/export.js /data/oznamy-export.json
 docker compose cp app:/data/oznamy-export.json ./oznamy.json
 ```
 
-Cieľový súbor ešte nesmie existovať. Kontaktné údaje zostávajú v SQLite v tabuľkách `announcements` a `announcement_versions`, vrátane `original_contact`; prístup k nim má iba kód a správca s priamym databázovým prístupom. Ani GET, ani odpovede po POST a PATCH ich neserializujú. Text oznamu je verejný obsah zadaný autorom; toto oddelenie sa týka samostatného kontaktného poľa. Nastav si vlastnú dobu uchovávania dát a pravidelné zálohy.
+Cieľový súbor ešte nesmie existovať. Mená a kontakty zadávateľov zostávajú v SQLite v tabuľkách `announcements` a `announcement_versions`, vrátane `original_name` a `original_contact`; prístup k nim má iba kód a správca s priamym databázovým prístupom. Ani GET, ani odpovede po POST a PATCH ich neserializujú. Text oznamu je verejný obsah zadaný autorom; toto oddelenie sa týka samostatných polí mena a kontaktu zadávateľa. Nastav si vlastnú dobu uchovávania dát a pravidelné zálohy.
 
 ## Overenie
 

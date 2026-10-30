@@ -87,8 +87,15 @@ export const writeSchema = submissionSchema
     requestId: z.uuid(),
     baseRevision: z.number().int().nonnegative(),
     contact: submissionSchema.shape.contact.optional(),
+    name: submissionSchema.shape.name.optional(),
   })
   .superRefine((value, context) => {
+    if (value.baseRevision === 0 && value.name === undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['name'],
+        message: 'Vyplň svoje meno.',
+      });
     if (value.baseRevision === 0 && value.contact === undefined)
       context.addIssue({
         code: 'custom',
@@ -144,9 +151,9 @@ export const storedAnnouncementSchema = submissionSchema.extend({
   reviewError: z.string().nullable(),
 });
 export type StoredAnnouncement = z.infer<typeof storedAnnouncementSchema>;
-// Public responses use an explicit allowlist and never contain the private contact.
+// Public responses use an explicit allowlist and never contain private submitter identity.
 export const savedAnnouncementSchema = storedAnnouncementSchema
-  .omit({ contact: true })
+  .omit({ name: true, contact: true })
   .strip();
 export type SavedAnnouncement = z.infer<typeof savedAnnouncementSchema>;
 export type WriteAnnouncement = z.infer<typeof writeSchema>;

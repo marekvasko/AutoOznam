@@ -169,7 +169,6 @@ describe('Automatická oprava termínu', () => {
       id: value.id,
       revision: 2,
       text: value.text,
-      name: value.name,
       publishOn: value.publishOn,
     });
     expect(response.body.analysis.extracted).toMatchObject({

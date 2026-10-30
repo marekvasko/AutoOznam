@@ -118,6 +118,9 @@ export function createStorage(path: string) {
           .prepare('SELECT id FROM announcements WHERE id = ?')
           .get(value.id);
         const previous = existing ? get(value.id) : null;
+        const name = value.name ?? previous?.name;
+        if (name === undefined)
+          throw new ServiceError(400, 'Vyplň svoje meno.');
         const contact = value.contact ?? previous?.contact;
         if (contact === undefined)
           throw new ServiceError(
@@ -141,7 +144,7 @@ export function createStorage(path: string) {
             request.announcement_id !== value.id ||
             request.revision !== previous.revision ||
             request.text !== value.text ||
-            request.name !== value.name ||
+            request.name !== name ||
             request.contact !== contact ||
             request.publication_dates !== publicationJson ||
             request.event_override !== overrideJson
@@ -162,30 +165,15 @@ export function createStorage(path: string) {
         if (previous) {
           db.prepare(
             `UPDATE announcements SET text=?, name=?, contact=?, review='null', status='checking', review_error=NULL, event_title=NULL, event_location=NULL, event_date=NULL, event_time=NULL, event_time_zone=NULL, event_starts_at_ms=NULL, revision=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
-          ).run(value.text, value.name, contact, revision, value.id);
+          ).run(value.text, name, contact, revision, value.id);
         } else {
           db.prepare(
             `INSERT INTO announcements (id, analysis_id, text, name, contact, review, status, original_name, original_contact, updated_at) VALUES (?, ?, ?, ?, ?, 'null', 'checking', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
-          ).run(
-            value.id,
-            value.id,
-            value.text,
-            value.name,
-            contact,
-            value.name,
-            contact,
-          );
+          ).run(value.id, value.id, value.text, name, contact, name, contact);
         }
         db.prepare(
           `INSERT INTO announcement_versions (announcement_id, revision, request_id, text, name, contact, status) VALUES (?, ?, ?, ?, ?, ?, 'checking')`,
-        ).run(
-          value.id,
-          revision,
-          value.requestId,
-          value.text,
-          value.name,
-          contact,
-        );
+        ).run(value.id, revision, value.requestId, value.text, name, contact);
         db.prepare(
           'UPDATE announcements SET publication_dates=?, event_override=? WHERE id=?',
         ).run(publicationJson, overrideJson, value.id);

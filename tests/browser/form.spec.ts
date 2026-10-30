@@ -88,7 +88,6 @@ async function mockApi(
       eventOverride: body.eventOverride ?? null,
       id: body.id,
       text: body.text,
-      name: body.name,
       revision: body.baseRevision + 1,
       status: options.failed
         ? 'review_failed'
@@ -200,8 +199,10 @@ test('obnovenie stránky načíta oznam bez kontaktu a umožní ďalšiu úpravu
   const link = page.url();
   await page.reload();
   await expect(page.getByRole('form', { name: 'Farský oznam' })).toBeVisible();
-  await expect(page.getByLabel('Tvoje meno')).toHaveValue('Mária Nováková');
-  await expect(page.getByLabel('E-mail alebo telefón')).toHaveValue('');
+  await expect(page.getByLabel('Tvoje meno')).toHaveValue('Anonymné');
+  await expect(page.getByLabel('E-mail alebo telefón')).toHaveValue('Anonymné');
+  await expect(page.getByLabel('Tvoje meno')).toBeDisabled();
+  await expect(page.getByLabel('E-mail alebo telefón')).toBeDisabled();
   await expect(page.getByText('Oznam je kompletný.')).toBeVisible();
   expect(page.url()).toBe(link);
   await page
@@ -210,6 +211,7 @@ test('obnovenie stránky načíta oznam bez kontaktu a umožní ďalšiu úpravu
   await page.getByRole('button', { name: 'Ulož zmeny' }).click();
   await expect(page.getByRole('status')).toHaveText('Oznam je uložený.');
   expect(state.requests[1]).not.toHaveProperty('contact');
+  expect(state.requests[1]).not.toHaveProperty('name');
 });
 test('odkaz na oznam funguje aj v inom prehliadači bez pôvodnej relácie', async ({
   page,
@@ -230,7 +232,7 @@ test('odkaz na oznam funguje aj v inom prehliadači bez pôvodnej relácie', asy
       route.fulfill({ json: [...state.records.values()][0] }),
     );
     await other.goto(editUrl!);
-    await expect(other.getByLabel('Tvoje meno')).toHaveValue('Mária Nováková');
+    await expect(other.getByLabel('Tvoje meno')).toHaveValue('Anonymné');
     await expect(
       other.getByRole('button', { name: 'Ulož zmeny' }),
     ).toBeVisible();

@@ -113,7 +113,7 @@ function AnnouncementForm() {
         if (cancelled) return;
         setSaved(value);
         setText(value.text);
-        setName(value.name);
+        setName('');
         setContact('');
         setPublishOn(value.publishOn.length ? value.publishOn : [nextSunday()]);
         setEventOverride(value.eventOverride);
@@ -146,8 +146,8 @@ function AnnouncementForm() {
     const current = session || { id: crypto.randomUUID() };
     const result = writeSchema.safeParse({
       text,
-      name,
-      contact: contact.trim() || undefined,
+      name: saved ? undefined : name,
+      contact: saved ? undefined : contact.trim() || undefined,
       publishOn,
       eventOverride,
       id: current.id,
@@ -184,7 +184,7 @@ function AnnouncementForm() {
       const value = await api('/api/announcements', current, pending.current);
       setSaved(value);
       setText(value.text);
-      setName(value.name);
+      setName('');
       setContact('');
       setPublishOn(value.publishOn);
       setEventOverride(value.eventOverride);
@@ -341,12 +341,12 @@ function AnnouncementForm() {
                 <label htmlFor="name">Tvoje meno</label>
                 <input
                   id="name"
-                  autoComplete="name"
-                  required
+                  autoComplete={saved ? 'off' : 'name'}
+                  required={!saved}
                   minLength={2}
                   maxLength={100}
-                  value={name}
-                  disabled={busy || dateSaving}
+                  value={saved ? 'Anonymné' : name}
+                  disabled={!!saved || busy || dateSaving}
                   onChange={(e) => {
                     setName(e.target.value);
                     changed();
@@ -357,12 +357,11 @@ function AnnouncementForm() {
                 <label htmlFor="contact">E-mail alebo telefón</label>
                 <input
                   id="contact"
-                  autoComplete="email"
+                  autoComplete={saved ? 'off' : 'email'}
                   required={!saved}
-                  placeholder={saved ? 'Nový kontakt (nepovinné)' : undefined}
                   maxLength={150}
-                  value={contact}
-                  disabled={busy || dateSaving}
+                  value={saved ? 'Anonymné' : contact}
+                  disabled={!!saved || busy || dateSaving}
                   onChange={(e) => {
                     setContact(e.target.value);
                     changed();
@@ -509,7 +508,7 @@ function AnnouncementForm() {
                                   setEventOverride(value.eventOverride);
                                   if (!dirty) {
                                     setText(value.text);
-                                    setName(value.name);
+                                    setName('');
                                     setPublishOn(value.publishOn);
                                   }
                                 }}
