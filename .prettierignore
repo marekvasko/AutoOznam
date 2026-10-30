@@ -7,3 +7,6 @@ package-lock.json
 .env
 
 build/
+
+# Generated migration snapshots.
+drizzle/meta/

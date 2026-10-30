@@ -132,3 +132,76 @@ it('migruje pôvodnú databázu bez straty dát, zachová históriu a reláciu p
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it('ORM migrácie sú opakovateľné a zlyhanie histórie vráti celý zápis späť', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'autooznam-orm-'));
+  const file = join(directory, 'db.sqlite');
+  try {
+    let storage = createStorage(file);
+    const value = {
+      id: randomUUID(),
+      requestId: randomUUID(),
+      baseRevision: 0,
+      text: 'Pôvodný oznam pri kostole.',
+      name: 'Pôvodný autor',
+      contact: 'private@example.sk',
+      publishOn: ['2026-11-01'],
+    };
+    storage.save(value);
+    storage.close();
+    storage = createStorage(file);
+    const inspector = new DatabaseSync(file);
+    try {
+      expect(
+        inspector
+          .prepare('SELECT count(*) AS count FROM __drizzle_migrations')
+          .get()?.count,
+      ).toBe(1);
+      inspector.exec(
+        "CREATE TRIGGER reject_history BEFORE INSERT ON announcement_versions WHEN NEW.revision=2 BEGIN SELECT RAISE(ABORT, 'test rollback'); END;",
+      );
+      const before = storage.get(value.id);
+      expect(() =>
+        storage.save({
+          ...value,
+          requestId: randomUUID(),
+          baseRevision: 1,
+          text: 'Toto sa nesmie uložiť.',
+          name: 'Iný autor',
+          contact: 'other@example.sk',
+        }),
+      ).toThrow();
+      expect(storage.get(value.id)).toEqual(before);
+      expect(
+        inspector
+          .prepare('SELECT count(*) AS count FROM announcement_versions')
+          .get()?.count,
+      ).toBe(1);
+      inspector.exec('DROP TRIGGER reject_history;');
+      storage.save({
+        ...value,
+        requestId: randomUUID(),
+        baseRevision: 1,
+        text: 'Úspešná ďalšia verzia.',
+      });
+    } finally {
+      inspector.close();
+      storage.close();
+    }
+    storage = createStorage(file);
+    expect(storage.get(value.id).revision).toBe(2);
+    storage.close();
+    const inspector2 = new DatabaseSync(file, { readOnly: true });
+    try {
+      expect(
+        inspector2
+          .prepare('SELECT count(*) AS count FROM __drizzle_migrations')
+          .get()?.count,
+      ).toBe(1);
+    } finally {
+      inspector2.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

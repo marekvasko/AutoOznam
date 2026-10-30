@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { addDays, isSunday, displayDate } from '../shared/schedule.js';
 import type { ReportItem, WeeklyReport } from '../shared/report.js';
+import type { Storage } from './storage.js';
 export function weeklyReport(
-  rows: Record<string, unknown>[],
+  rows: ReturnType<Storage['reportRows']>,
   sunday: string,
 ): WeeklyReport {
   if (!isSunday(sunday)) throw new Error('Vyber dátum nedele.');
@@ -10,24 +11,24 @@ export function weeklyReport(
     weekEnd = addDays(sunday, 7);
   const items: ReportItem[] = rows
     .map((row) => {
-      const review = JSON.parse(String(row.review));
+      const review = row.analysis;
       return {
         id: String(row.id),
         title: String(
-          row.event_title ||
+          row.title ||
             review?.extracted?.title ||
             String(row.text).slice(0, 90),
         ),
         text: String(row.text),
-        location: row.event_location ? String(row.event_location) : null,
-        date: z.iso.date().safeParse(row.event_date).success
-          ? String(row.event_date)
+        location: row.location ? String(row.location) : null,
+        date: z.iso.date().safeParse(row.date).success
+          ? String(row.date)
           : null,
-        time: row.event_time ? String(row.event_time) : null,
+        time: row.time ? String(row.time) : null,
         status: String(row.status),
         revision: Number(row.revision),
-        publishOn: JSON.parse(String(row.publication_dates)),
-        manualDate: row.event_override !== 'null',
+        publishOn: row.publishOn,
+        manualDate: row.eventOverride !== null,
         timingIssue: review?.extracted?.timingIssue ?? null,
       };
     })

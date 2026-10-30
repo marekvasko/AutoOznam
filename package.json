@@ -15,11 +15,15 @@
     "export": "tsx server/export.ts",
     "test:e2e": "playwright test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx server/db/migrate.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
+    "better-sqlite3": "^13.0.3",
     "dotenv": "^18.0.9",
+    "drizzle-orm": "^0.45.4",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.2",
     "lucide-react": "^1.64.0",
@@ -29,6 +33,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
@@ -36,11 +41,18 @@
     "@types/supertest": "^7.2.1",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
+    "drizzle-kit": "^0.31.11",
     "prettier": "^3.9.10",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "better-sqlite3": true
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
   }
 }

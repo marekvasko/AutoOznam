@@ -1,6 +1,6 @@
 # AutoOznam
 
-Slovenská aplikácia na farské oznamy: React, TypeScript, Express 5, SQLite a OpenRouter. Produkcia: https://autooznam.spis-ai.com. Vyžaduje Node.js 24+.
+Slovenská aplikácia na farské oznamy: React, TypeScript, Express 5, Drizzle ORM, SQLite a OpenRouter. Produkcia: https://autooznam.spis-ai.com. Vyžaduje Node.js 24+.
 
 ## Použitie
 
@@ -48,6 +48,30 @@ npm start
 ```
 
 Produkčný server spúšťa `build/server/index.js` a poskytuje frontend z `dist` na porte `PORT` (predvolene 3001). Po zostavení stačia produkčné závislosti.
+
+## Databázová vrstva a migrácie
+
+Databázová vrstva používa **Drizzle ORM** so stabilným SQLite adaptérom `better-sqlite3`. Existujúci SQLite súbor aj názvy tabuliek a stĺpcov zostávajú kompatibilné.
+
+- `server/db/schema.ts`: typované modely aktuálnych oznamov a ich verzií, vrátane JSON polí.
+- `server/db/connection.ts`: spoločné pripojenie, WAL, aplikovanie verzovaných migrácií a read-only režim.
+- `server/storage.ts`: repository s ORM dotazmi a synchrónnymi transakciami `immediate`; zápis oznamu a histórie je atómový.
+- `server/db/export.ts`: read-only ORM export s explicitným výberom verejných stĺpcov; nečíta mená ani kontakty.
+- `drizzle/`: kontrolované SQL migrácie, snapshot schémy a migračný journal. SQL zostáva v migráciách, bežné CRUD a exporty používa ORM.
+
+Pri štarte sa aplikujú iba dosiaľ nepoužité migrácie. Pre databázu zo starších verzií sa jednorazovo spustí `server/db/legacy.ts`, ktorý bezpečne doplní chýbajúcu historickú schému a zachová dáta. Baseline migrácia používa `IF NOT EXISTS` na prevzatie týchto tabuliek. Ďalšie štarty už kompatibilný bootstrap neopakujú. Pri novej databáze sa schéma vytvorí priamo z migrácií. Existujúce databázy sa neresetujú ani nenahrádzajú.
+
+Po úprave modelov:
+
+```sh
+npm run db:generate -- --name=popis_zmeny
+# Skontroluj vzniknuté SQL a commitni migráciu aj snapshot.
+npm run db:migrate
+```
+
+Príkazy spúšťaj z koreňa projektu. Pred aplikovaním zmien na produkčné dáta vytvor SQLite backup. Už aplikované migrácie neupravuj; zmenu schémy pridaj ako ďalšiu migráciu. V produkčnom kontajneri bez vývojových závislostí možno migrácie spustiť aj cez `node build/server/db/migrate.js`; štart servera ich aplikuje automaticky.
+
+Docker zostavuje natívny SQLite adaptér v oddelenom build stage s Python/make/g++; runtime obsahuje iba produkčné závislosti a migračné súbory. `allowScripts` povoľuje build iba pre `better-sqlite3`. Override `esbuild` udržiava tranzitívnu závislosť Drizzle Kit na opravenej verzii.
 
 ## Dáta a termíny
 
@@ -106,4 +130,4 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Testy používajú izolovanú SQLite a simulované AI odpovede, bez platených volaní. Overujú ukladanie pred AI, verzie, verejné úpravy, nedostupnú kontrolu, termíny/DST, nedele, ručné opravy, týždenné sekcie, export a správanie v prehliadači. Živé overenie modelu vyžaduje vlastný API kľúč.
+Testy používajú izolovanú SQLite a simulované AI odpovede, bez platených volaní. Overujú ukladanie pred AI, verzie, verejné úpravy, nedostupnú kontrolu, termíny/DST, nedele, ručné opravy, týždenné sekcie, export, súkromie a správanie v prehliadači. Databázové testy overujú prevzatie pôvodnej schémy, opakovateľnosť migrácií, zachovanie dát a rollback celého ORM zápisu pri zlyhaní histórie. Živé overenie modelu vyžaduje vlastný API kľúč.
